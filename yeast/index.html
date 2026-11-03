@@ -539,43 +539,195 @@ SC.push({id:'intro',chap:'실험 준비',name:'의뢰 받기',
 
 /* ---- 1. 안전 ---- */
 SC.push({id:'safety',chap:'실험 준비',name:'안전 갖추기',
- guide:'실험할 때에는 <span class="hl">실험복, 실험용 장갑, 보안경</span>을 반드시 착용합니다. 아래 단추를 눌러 하나씩 갖추세요.',
+ guide:'실험할 때에는 <span class="hl">실험복, 실험용 장갑, 보안경</span>을 반드시 착용합니다. 보호구 그림을 <span class="hl">끌어다 학생에게 놓아</span> 하나씩 입혀 주세요.',
  mount:function(P){
   var items=[['coat','실험복'],['glove','실험용 장갑'],['goggle','보안경']];
-  canvas(function(c,w,h,t){
-    var x=w/2, s=Math.min(h/380,w/300), y=h*.5;
-    c.save();c.translate(x,y);c.scale(s,s);
+  var NAME={coat:'실험복',glove:'실험용 장갑',goggle:'보안경'};
+  var SKIN='#FFE0C7',HAIR='#5A3A2E',SHIRT='#7CC0FF',GLV='#9B8CFF',COAT='#FFFFFF';
+  var st={drag:null,pt:{x:0,y:0},pop:{},miss:0};
+  var M={slots:[],zone:null};
+  if(!D.worn)D.worn={};
+
+  /* ---------- 보호구 그림 (단위 상자 약 100) ---------- */
+  function coatIcon(c){
+    c.lineJoin='round';c.lineCap='round';
+    c.beginPath();c.moveTo(0,-46);c.lineTo(0,-38);c.lineWidth=4;c.strokeStyle='#8A93A8';c.stroke();
+    c.beginPath();c.arc(0,-50,5,Math.PI*.9,Math.PI*2.1);c.stroke();
+    c.beginPath();c.moveTo(-38,-26);c.lineTo(0,-38);c.lineTo(38,-26);c.lineWidth=4;c.stroke();
+    c.beginPath();c.moveTo(-20,-34);c.lineTo(-46,-20);c.lineTo(-52,26);c.lineTo(-38,28);c.lineTo(-32,-2);c.lineTo(-30,44);c.lineTo(30,44);c.lineTo(32,-2);c.lineTo(38,28);c.lineTo(52,26);c.lineTo(46,-20);c.lineTo(20,-34);c.closePath();
+    c.fillStyle=COAT;c.fill();c.lineWidth=3.5;c.strokeStyle=INK;c.stroke();
+    c.beginPath();c.moveTo(-20,-34);c.lineTo(0,0);c.lineTo(20,-34);c.lineWidth=3;c.stroke();
+    c.beginPath();c.moveTo(0,0);c.lineTo(0,44);c.lineWidth=2.5;c.stroke();
+    [10,24].forEach(function(y){c.beginPath();c.arc(6,y,2.6,0,7);c.fillStyle=INK;c.fill();});
+    rr(c,-26,14,14,12,3);c.lineWidth=2.5;c.stroke();
+    c.beginPath();c.moveTo(-17,10);c.lineTo(-17,18);c.strokeStyle=BLUE;c.lineWidth=3;c.stroke();
+  }
+  function gloveShape(c){
+    c.beginPath();
+    c.moveTo(-14,30);c.lineTo(-14,6);c.quadraticCurveTo(-26,0,-24,-10);c.quadraticCurveTo(-20,-16,-12,-8);
+    c.lineTo(-12,-26);c.quadraticCurveTo(-12,-32,-7,-32);c.quadraticCurveTo(-3,-32,-3,-26);
+    c.lineTo(-3,-32);c.quadraticCurveTo(-3,-38,2,-38);c.quadraticCurveTo(6,-38,6,-32);
+    c.lineTo(6,-29);c.quadraticCurveTo(6,-35,11,-35);c.quadraticCurveTo(15,-35,15,-29);
+    c.lineTo(15,-20);c.quadraticCurveTo(15,-25,19,-25);c.quadraticCurveTo(23,-25,23,-19);
+    c.lineTo(22,6);c.quadraticCurveTo(20,16,16,20);c.lineTo(16,30);c.closePath();
+    c.fillStyle=GLV;c.fill();c.lineWidth=3;c.strokeStyle=INK;c.lineJoin='round';c.stroke();
+    rr(c,-16,22,34,12,4);c.fillStyle='#C7BEFF';c.fill();c.stroke();
+  }
+  function gloveIcon(c){
+    c.save();c.translate(-18,4);c.rotate(-.18);c.scale(-1,1);gloveShape(c);c.restore();
+    c.save();c.translate(18,0);c.rotate(.18);gloveShape(c);c.restore();
+  }
+  function goggleIcon(c){
+    c.beginPath();c.moveTo(-46,0);c.quadraticCurveTo(-58,22,0,26);c.quadraticCurveTo(58,22,46,0);c.lineWidth=6;c.strokeStyle='#3D4766';c.stroke();
+    rr(c,-46,-16,92,34,15);c.fillStyle='rgba(124,192,255,.6)';c.fill();c.lineWidth=4;c.strokeStyle=INK;c.stroke();
+    c.beginPath();c.moveTo(0,-16);c.lineTo(0,18);c.lineWidth=3;c.stroke();
+    c.beginPath();c.moveTo(-34,-8);c.lineTo(-24,-8);c.moveTo(12,-8);c.lineTo(22,-8);c.strokeStyle='#fff';c.lineWidth=3.5;c.stroke();
+  }
+  var ICON={coat:coatIcon,glove:gloveIcon,goggle:goggleIcon};
+
+  /* ---------- 학생 (원점 = 몸 중심, 단위 px) ---------- */
+  function person(c,t){
+    var w=D.worn, all=w.coat&&w.glove&&w.goggle;
+    var bob=Math.sin(t*2.2)*2.5, hop=all?Math.abs(Math.sin(t*5))*6*Math.max(0,1-(t-(st.allT||t))/1.2):0;
+    c.save();c.translate(0,-bob-hop);
+    c.lineJoin='round';c.lineCap='round';
+    /* 그림자 */
+    c.save();c.translate(0,bob+hop);c.beginPath();c.ellipse(0,132,62,10,0,0,7);c.fillStyle='rgba(0,0,0,.28)';c.fill();c.restore();
+    /* 다리·신발 */
+    [-1,1].forEach(function(sd){
+      rr(c,sd*22-11,82,22,38,8);c.fillStyle='#3D4766';c.fill();c.lineWidth=3.5;c.strokeStyle=INK;c.stroke();
+      c.beginPath();c.ellipse(sd*24,122,17,9,0,0,7);c.fillStyle='#F0524F';c.fill();c.stroke();});
     /* 몸 */
-    c.lineWidth=4;c.strokeStyle=INK;
-    rr(c,-62,-30,124,170,40);c.fillStyle=D.worn.coat?'#FFFFFF':'#5B8BD9';c.fill();c.stroke();
-    if(D.worn.coat){c.beginPath();c.moveTo(0,-26);c.lineTo(0,136);c.lineWidth=3;c.stroke();
-      c.beginPath();c.moveTo(-18,-28);c.lineTo(0,10);c.lineTo(18,-28);c.stroke();
-      [20,50,80].forEach(function(yy){c.beginPath();c.arc(8,yy,4,0,7);c.fillStyle=INK;c.fill();});
-      rr(c,-48,60,26,22,4);c.lineWidth=2.5;c.stroke();}
+    if(w.coat){
+      c.beginPath();c.moveTo(-34,-6);c.quadraticCurveTo(-52,0,-52,30);c.lineTo(-54,104);c.lineTo(54,104);c.lineTo(52,30);c.quadraticCurveTo(52,0,34,-6);c.closePath();
+      c.fillStyle=COAT;c.fill();c.lineWidth=4;c.strokeStyle=INK;c.stroke();
+      c.beginPath();c.moveTo(-18,-8);c.lineTo(0,22);c.lineTo(18,-8);c.closePath();c.fillStyle=SHIRT;c.fill();c.lineWidth=3;c.stroke();
+      c.beginPath();c.moveTo(-26,-6);c.lineTo(-6,40);c.moveTo(26,-6);c.lineTo(6,40);c.lineWidth=3;c.stroke();
+      c.beginPath();c.moveTo(0,40);c.lineTo(0,104);c.lineWidth=2.5;c.stroke();
+      [54,74].forEach(function(y){c.beginPath();c.arc(7,y,3,0,7);c.fillStyle=INK;c.fill();});
+      rr(c,-42,60,20,16,4);c.lineWidth=2.5;c.strokeStyle=INK;c.stroke();
+      c.beginPath();c.moveTo(-28,56);c.lineTo(-28,66);c.strokeStyle=BLUE;c.lineWidth=3.5;c.stroke();
+    }else{
+      rr(c,-44,-8,88,100,30);c.fillStyle=SHIRT;c.fill();c.lineWidth=4;c.strokeStyle=INK;c.stroke();
+      c.beginPath();c.arc(0,-4,14,.15,Math.PI-.15);c.lineWidth=3;c.stroke();
+      c.beginPath();c.arc(0,40,9,0,7);c.fillStyle=SUN;c.fill();c.lineWidth=2.5;c.stroke();
+    }
     /* 팔·손 */
-    [-1,1].forEach(function(sd){c.save();c.beginPath();c.moveTo(sd*58,-10);c.quadraticCurveTo(sd*92,40,sd*80,96);c.lineWidth=26;c.strokeStyle=INK;c.lineCap='round';c.stroke();
-      c.lineWidth=19;c.strokeStyle=D.worn.coat?'#FFFFFF':'#5B8BD9';c.stroke();
-      c.beginPath();c.arc(sd*80,104,15,0,7);c.fillStyle=D.worn.glove?'#7CC0FF':'#F2C9A0';c.fill();c.lineWidth=3.5;c.strokeStyle=INK;c.stroke();c.restore();});
+    var wave=all?Math.sin(t*6)*.5:0;
+    [-1,1].forEach(function(sd){
+      c.save();c.translate(sd*40,6);c.rotate(sd*(-.25)+(sd>0?-wave:0)-(sd>0&&all?1.9:0));
+      c.beginPath();c.moveTo(0,0);c.lineTo(sd*6,52);c.lineWidth=24;c.strokeStyle=INK;c.stroke();
+      c.lineWidth=17;c.strokeStyle=w.coat?COAT:SHIRT;c.stroke();
+      if(w.glove){
+        c.beginPath();c.arc(sd*6,64,13,0,7);c.fillStyle=GLV;c.fill();c.lineWidth=3;c.strokeStyle=INK;c.stroke();
+        rr(c,sd*6-12,48,24,9,3);c.fillStyle='#C7BEFF';c.fill();c.stroke();
+        c.beginPath();c.ellipse(sd*6-sd*10,60,5,7,sd*.6,0,7);c.fillStyle=GLV;c.fill();c.stroke();
+      }else{
+        c.beginPath();c.arc(sd*6,62,12,0,7);c.fillStyle=SKIN;c.fill();c.lineWidth=3;c.strokeStyle=INK;c.stroke();
+      }
+      c.restore();});
     /* 머리 */
-    c.beginPath();c.arc(0,-82,48,0,7);c.fillStyle='#F2C9A0';c.fill();c.lineWidth=4;c.stroke();
-    c.beginPath();c.arc(0,-92,49,Math.PI*1.05,Math.PI*1.95);c.lineWidth=16;c.strokeStyle='#2B2238';c.stroke();
-    c.fillStyle=INK;c.beginPath();c.arc(-16,-80,4.5,0,7);c.arc(16,-80,4.5,0,7);c.fill();
-    c.beginPath();c.arc(0,-62,10,.2,Math.PI-.2);c.lineWidth=3;c.strokeStyle=INK;c.stroke();
-    if(D.worn.goggle){rr(c,-44,-96,88,32,14);c.fillStyle='rgba(124,192,255,.55)';c.fill();c.lineWidth=4;c.strokeStyle=INK;c.stroke();
-      c.beginPath();c.moveTo(-44,-80);c.lineTo(-50,-80);c.moveTo(44,-80);c.lineTo(50,-80);c.stroke();
-      c.beginPath();c.moveTo(-34,-90);c.lineTo(-24,-90);c.strokeStyle='#fff';c.lineWidth=3;c.stroke();}
+    c.beginPath();c.arc(0,-66,62,0,7);c.fillStyle=SKIN;c.fill();c.lineWidth=4;c.strokeStyle=INK;c.stroke();
+    /* 귀 */
+    [-1,1].forEach(function(sd){c.beginPath();c.ellipse(sd*61,-60,9,12,0,0,7);c.fillStyle=SKIN;c.fill();c.lineWidth=3.5;c.stroke();});
+    c.beginPath();c.arc(0,-66,62,0,7);c.fillStyle=SKIN;c.fill();c.lineWidth=4;c.stroke();
+    /* 머리카락 */
+    c.beginPath();c.arc(0,-70,67,Math.PI*.96,Math.PI*2.04,false);
+    c.quadraticCurveTo(54,-74,44,-92);c.quadraticCurveTo(34,-72,16,-90);c.quadraticCurveTo(4,-70,-12,-92);c.quadraticCurveTo(-26,-70,-42,-90);c.quadraticCurveTo(-52,-72,-66,-64);c.closePath();
+    c.fillStyle=HAIR;c.fill();c.lineWidth=4;c.strokeStyle=INK;c.stroke();
+    c.beginPath();c.moveTo(-6,-134);c.quadraticCurveTo(4,-152,18,-146);c.lineWidth=4;c.stroke();
+    c.beginPath();c.arc(-26,-118,10,Math.PI*1.1,Math.PI*1.6);c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=4;c.stroke();
+    /* 볼 */
+    [-1,1].forEach(function(sd){c.beginPath();c.ellipse(sd*38,-40,11,7,0,0,7);c.fillStyle='rgba(255,128,140,.55)';c.fill();});
+    /* 눈 */
+    var blink=((t%3.6)<.13)&&!all;
+    [-1,1].forEach(function(sd){var ex=sd*23,ey=-58;
+      c.strokeStyle=INK;c.fillStyle=INK;
+      if(all){c.beginPath();c.arc(ex,ey+4,9,Math.PI*1.1,Math.PI*1.9);c.lineWidth=4;c.stroke();}
+      else if(blink){c.beginPath();c.moveTo(ex-8,ey);c.quadraticCurveTo(ex,ey+5,ex+8,ey);c.lineWidth=4;c.stroke();}
+      else{c.beginPath();c.ellipse(ex,ey,8.5,11,0,0,7);c.fill();
+        c.beginPath();c.arc(ex+3,ey-4,3.6,0,7);c.fillStyle='#fff';c.fill();
+        c.beginPath();c.arc(ex-3,ey+4,1.8,0,7);c.fill();}});
+    /* 입 */
+    c.strokeStyle=INK;c.lineWidth=3.5;
+    if(all){c.beginPath();c.moveTo(-11,-36);c.quadraticCurveTo(0,-20,11,-36);c.closePath();c.fillStyle='#C2404A';c.fill();c.stroke();}
+    else{c.beginPath();c.moveTo(-8,-36);c.quadraticCurveTo(-4,-31,0,-35);c.quadraticCurveTo(4,-31,8,-36);c.stroke();}
+    /* 보안경 */
+    if(w.goggle){
+      c.beginPath();c.moveTo(-50,-62);c.lineTo(-64,-66);c.moveTo(50,-62);c.lineTo(64,-66);c.lineWidth=7;c.strokeStyle='#3D4766';c.stroke();
+      rr(c,-50,-78,100,36,16);c.fillStyle='rgba(124,192,255,.42)';c.fill();c.lineWidth=4;c.strokeStyle=INK;c.stroke();
+      c.beginPath();c.moveTo(0,-78);c.lineTo(0,-42);c.lineWidth=3;c.stroke();
+      c.beginPath();c.moveTo(-40,-70);c.lineTo(-30,-70);c.moveTo(8,-70);c.lineTo(18,-70);c.strokeStyle='rgba(255,255,255,.9)';c.lineWidth=3.5;c.stroke();
+    }
     c.restore();
+  }
+
+  function sparkle(c,x,y,r,a){c.save();c.globalAlpha=a;c.translate(x,y);c.beginPath();
+    for(var i=0;i<4;i++){c.rotate(Math.PI/2);c.moveTo(0,0);c.quadraticCurveTo(r*.15,r*.15,0,r);}
+    c.beginPath();c.moveTo(0,-r);c.quadraticCurveTo(r*.18,-r*.18,r,0);c.quadraticCurveTo(r*.18,r*.18,0,r);c.quadraticCurveTo(-r*.18,r*.18,-r,0);c.quadraticCurveTo(-r*.18,-r*.18,0,-r);
+    c.fillStyle=SUN;c.fill();c.lineWidth=2;c.strokeStyle=INK;c.stroke();c.restore();}
+
+  var cv=canvas(function(c,w,h,t){
+    st.t=t;
+    var wide=w>=h*1.15, cx,cy,s,bs,slots=[];
+    if(wide){s=Math.min((h-60)/330,w*.58/250);cx=w*.37;cy=h*.47;bs=Math.min(h*.24,w*.17,118);
+      items.forEach(function(it,i){slots.push({k:it[0],x:w*.79,y:h*(.2+i*.26)});});}
+    else{s=Math.min(h*.58/310,w/270);cx=w/2;cy=h*.4;bs=Math.min(w*.26,h*.2,108);
+      items.forEach(function(it,i){slots.push({k:it[0],x:w*(.2+i*.3),y:h*.81});});}
+    M.zone={x:cx-95*s,y:cy-160*s,w:190*s,h:300*s};M.zone.h=Math.min(M.zone.h,h-58-M.zone.y);M.slots=slots;M.bs=bs;
+    /* 놓을 곳 표시 */
+    if(st.drag){var over=inZone(st.pt);
+      c.save();c.setLineDash([10,8]);c.lineDashOffset=-t*30;rr(c,M.zone.x,M.zone.y,M.zone.w,M.zone.h,40);
+      c.fillStyle=over?'rgba(56,193,114,.18)':'rgba(255,210,63,.08)';c.fill();c.lineWidth=3;c.strokeStyle=over?GRASS:SUN;c.stroke();c.restore();
+      txt(c,over?'여기에 놓으세요':'학생에게 끌어다 놓기',cx,M.zone.y+M.zone.h+16,{size:12.5,w:900,col:over?GRASS:SUN});}
+    /* 학생 */
+    c.save();c.translate(cx,cy);c.scale(s,s);person(c,t);c.restore();
+    /* 착용 순간 반짝 */
+    items.forEach(function(it){var p0=st.pop[it[0]];if(p0==null)return;var k=(t-p0)/.9;if(k>1)return;
+      for(var i=0;i<5;i++){var a=i/5*Math.PI*2+p0;sparkle(c,cx+Math.cos(a)*(70+k*60)*s,cy-40*s+Math.sin(a)*(70+k*60)*s,(9+6*(1-k))*s*1.4,1-k);}});
+    if(st.allT!=null){var k2=t-st.allT;[[-80,-120],[85,-110],[-95,10],[95,30]].forEach(function(o,i){
+      sparkle(c,cx+o[0]*s,cy+o[1]*s,(7+3*Math.sin(t*4+i))*s*1.4,.85);});}
+    /* 보호구 선반 */
+    slots.forEach(function(sl,i){var x=sl.x,y=sl.y,b=bs,worn=D.worn[sl.k],held=st.drag&&st.drag.k===sl.k;
+      rr(c,x-b/2+4,y-b/2+5,b,b,18);c.fillStyle='rgba(0,0,0,.4)';c.fill();
+      rr(c,x-b/2,y-b/2,b,b,18);c.fillStyle=worn||held?'rgba(255,249,236,.12)':PAPER;c.fill();
+      c.save();if(worn||held){c.setLineDash([7,6]);}c.lineWidth=3;c.strokeStyle=worn||held?'rgba(255,249,236,.55)':INK;c.stroke();c.restore();
+      if(!worn&&!held){var hov=Math.sin(t*3+i)*2;c.save();c.translate(x,y-b*.12+hov);c.scale(b/132,b/132);ICON[sl.k](c);c.restore();}
+      if(worn){c.beginPath();c.arc(x,y-6,b*.17,0,7);c.fillStyle=GRASS;c.fill();c.lineWidth=3;c.strokeStyle=INK;c.stroke();
+        c.beginPath();c.moveTo(x-b*.08,y-6);c.lineTo(x-b*.02,y+b*.05-6);c.lineTo(x+b*.09,y-b*.07-6);c.lineWidth=4;c.strokeStyle='#fff';c.stroke();}
+      txt(c,NAME[sl.k],x,y+b/2-14,{size:Math.max(11,b*.11),w:900,col:worn||held?PAPER:INK});});
+    /* 끌어 보라는 표시 */
+    if(!st.drag){var nx=slots.filter(function(sl){return !D.worn[sl.k];})[0];
+      if(nx){tap(c,nx.x+bs*.3,nx.y-bs*.28,t);
+        var k=(t*.6)%1,ax=nx.x+(cx-nx.x)*k*.55,ay=nx.y+(cy-nx.y)*k*.55;
+        if(st.miss>0||t<8){c.save();c.globalAlpha=Math.sin(k*Math.PI)*.8;c.beginPath();c.arc(ax,ay,6,0,7);c.fillStyle=SUN;c.fill();c.restore();}}}
+    /* 끌고 있는 물건 */
+    if(st.drag){c.save();c.translate(st.pt.x+3,st.pt.y+5);c.scale(bs/105,bs/105);c.globalAlpha=.35;c.filter='brightness(0)';ICON[st.drag.k](c);c.restore();
+      c.save();c.translate(st.pt.x,st.pt.y);c.rotate(Math.sin(t*8)*.06);c.scale(bs/105,bs/105);ICON[st.drag.k](c);c.restore();}
     var n=items.filter(function(it){return D.worn[it[0]];}).length;
-    chip(c,'착용 '+n+' / 3',w/2,26,n===3?GRASS:PAPER,13);
+    chip(c,'착용 '+n+' / 3',wide?cx:w/2,24,n===3?GRASS:PAPER,13);
   });
-  items.forEach(function(it){var b=button(it[1]+(D.worn[it[0]]?' ✓':''),D.worn[it[0]]?'on':'',function(){
-    D.worn[it[0]]=1;save();b.className='btn on';b.textContent=it[1]+' ✓';sync();});});
+  cv.cv.style.touchAction='none';
+  function inZone(p){var z=M.zone;return z&&p.x>z.x&&p.x<z.x+z.w&&p.y>z.y&&p.y<z.y+z.h;}
+  function hitSlot(p){var b=M.bs/2+6;for(var i=0;i<M.slots.length;i++){var sl=M.slots[i];if(Math.abs(p.x-sl.x)<b&&Math.abs(p.y-sl.y)<b)return sl;}return null;}
+  on(cv.cv,'pointerdown',function(ev){var p=cv.pt(ev),sl=hitSlot(p);
+    if(sl&&!D.worn[sl.k]){st.drag={k:sl.k};st.pt=p;try{cv.cv.setPointerCapture(ev.pointerId);}catch(_){}}
+    else if(inZone(p)&&!items.every(function(it){return D.worn[it[0]];}))toast('보호구 그림을 끌어다 학생에게 놓아 주세요.');});
+  on(cv.cv,'pointermove',function(ev){if(st.drag)st.pt=cv.pt(ev);
+    else{var sl=hitSlot(cv.pt(ev));cv.cv.style.cursor=sl&&!D.worn[sl.k]?'grab':'default';}});
+  function drop(){if(!st.drag)return;var k=st.drag.k;st.drag=null;
+    if(inZone(st.pt)){D.worn[k]=1;st.pop[k]=st.t;save();
+      var msg={coat:'실험복을 입었습니다. 옷에 시약이 묻는 것을 막아 줍니다.',glove:'실험용 장갑을 꼈습니다. 손을 시약과 오염으로부터 보호합니다.',goggle:'보안경을 썼습니다. 액체가 튀어도 눈을 보호합니다.'}[k];
+      toast(msg,'good');sync();}
+    else{st.miss++;toast(NAME[k]+'을(를) 학생 위에 놓아야 착용됩니다.');}}
+  on(cv.cv,'pointerup',drop);on(cv.cv,'pointercancel',function(){st.drag=null;});
   P.innerHTML='<div class="card"><h3>안전 수칙</h3><ul class="tight">'+
    '<li>유리 기구가 깨지지 않게 주의한다.</li><li>사용하고 남은 실험 재료는 선생님의 지도에 따라 분리하여 처리한다.</li>'+
    '<li>실험할 때에는 실험복, 실험용 장갑, 보안경을 반드시 착용한다.</li></ul></div>'+
    '<div class="card"><h3>준비물</h3><p>비커, 발효관, 스포이트, 솜, 효모액, 증류수, 5 % 포도당 용액, 5 % 녹말 용액, 40 ℃ 항온기</p></div>';
   function sync(){var all=items.every(function(it){return D.worn[it[0]];});
-    hint(all?'준비 완료. 이제 효모액을 만듭니다':'단추를 눌러 보호구를 착용하세요');
+    if(all&&st.allT==null)st.allT=st.t||0;
+    hint(all?'준비 완료. 이제 효모액을 만듭니다':'보호구 그림을 끌어다 학생에게 놓으세요');
     if(all)note('n1','안전','실험복·실험용 장갑·보안경 착용, 유리 기구 주의, 남은 재료는 지도에 따라 분리 처리');
     gate(all,'보호구 세 가지를 모두 착용해야 넘어갑니다');}
   sync();
@@ -1033,16 +1185,9 @@ SC.push({id:'result',chap:'결과 정리',name:'결과 정리하기',
    why:'효모는 설탕이나 포도당 같은 당을 쉽게 이용해 알코올 발효를 합니다. 이때 생긴 <b>이산화 탄소</b>가 반죽 속에 갇혀 반죽이 부풀고, 굽는 동안 에탄올은 날아갑니다. 밀가루만 넣은 반죽도 조금은 부푸는데, 밀가루 속 효소가 녹말 일부를 엿당으로 분해해 효모가 쓸 수 있기 때문입니다.',
    bad:{0:'반죽을 부풀린 것은 기체입니다. 실험에서 어떤 기체가 모였는지 떠올려 보세요.',2:'발효에서 나오는 기체는 산소가 아닙니다.',3:'오히려 효모가 활발히 활동하게 됩니다.'}};
   quiz(P,Q2,sync);
-  var QA={id:'qa_calc',adv:1,q:'B 에 넣은 포도당이 <b>모두</b> 알코올 발효로 분해된다면, 이론적으로 생기는 이산화 탄소는 약 몇 mL 일까요?',
-   ctx:'<p>5 % 포도당 용액 20 mL 에는 포도당 1 g 이 들어 있다.</p><p>포도당 분자량 180. 기체의 부피는 25 ℃, 1 기압으로 환산한다 (기체 1 몰 = 24 L).</p>',
-   opts:['약 6.3 mL','약 133 mL','약 267 mL','약 533 mL'],a:2,
-   why:'포도당 1 g = 1/180 몰. 포도당 1 몰에서 CO₂ 2 몰이 생기므로 CO₂ = 2/180 몰 ≈ 0.0111 몰 → × 24 L ≈ <b>0.267 L = 약 267 mL</b>. 실제로 모인 6.3 mL 는 그 일부입니다. 20 분 동안 포도당의 일부만 분해되었고, 생긴 CO₂ 의 일부는 용액에 녹았기 때문입니다.',
-   bad:{0:'6.3 mL 는 20 분 동안 실제로 모인 양입니다. 포도당이 모두 분해된 경우를 계산해 보세요.',1:'포도당 1 몰에서 CO₂ 는 <b>2 몰</b> 생깁니다. 계수를 확인하세요.',3:'포도당 1 몰 → CO₂ 2 몰입니다. 4 몰로 계산하지 않았는지 확인하세요.'}};
-  quiz(P,QA,sync);
-  function sync(){var g=ok('q_starch')&&ok('q_bread')&&ok('qa_calc');
-    if(g)note('n8b','[심화] 이론값 계산','포도당 1 g(1/180 몰) → CO₂ 2/180 몰 ≈ 267 mL(24 L/몰). 실측 6.3 mL 는 그 일부: 20 분 동안 일부만 분해, CO₂ 일부는 용액에 녹음.');
+  function sync(){var g=ok('q_starch')&&ok('q_bread');
     if(g)note('n8','결과 해석','B(포도당) 에서 가장 많은 기체, C(녹말) 는 아주 적음, A 는 없음.\n효모는 녹말을 분해하는 효소가 없어 녹말을 호흡기질로 쓰지 못한다.\n빵 반죽: 효모가 당을 발효하여 생긴 이산화 탄소가 반죽을 부풀린다.');
-    gate(g,'문항 세 개를 모두 풀면 넘어갑니다');}
+    gate(g,'문항 두 개를 모두 풀면 넘어갑니다');}
   sync();
  }});
 
